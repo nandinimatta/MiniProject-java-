@@ -1,0 +1,237 @@
+package projects;
+import java.io.*;
+import java.util.*;
+class User implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private String username;
+    private String name;
+    public User(String username, String name) {
+        this.username = username;
+        this.name = name;
+    }
+    public String getUsername() { return username; }
+    public String getName() { return name; }
+    @Override
+    public String toString() {
+        return username + " (" + name + ")";
+    }
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        User user = (User) obj;
+        return username.equals(user.username);
+    }
+    @Override
+    public int hashCode() {
+        return username.hashCode();
+    }
+}
+class SocialGraph implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private Map<User, List<User>> adjList;
+    public SocialGraph() {
+        adjList = new HashMap<>();
+    }
+    public void addUser(User user) {
+        adjList.putIfAbsent(user, new ArrayList<>());
+    }
+    public void addFriendship(User u1, User u2) {
+        adjList.putIfAbsent(u1, new ArrayList<>());
+        adjList.putIfAbsent(u2, new ArrayList<>());
+        if (!adjList.get(u1).contains(u2)) adjList.get(u1).add(u2);
+        if (!adjList.get(u2).contains(u1)) adjList.get(u2).add(u1);
+    }
+    public List<User> getAllUsers() {
+        return new ArrayList<>(adjList.keySet());
+    }
+    public List<User> getFriends(User user) {
+        return adjList.getOrDefault(user, new ArrayList<>());
+    }
+    public List<User> suggestFriendsBFS(User user) {
+        if (!adjList.containsKey(user)) return new ArrayList<>();
+        Set<User> visited = new HashSet<>();
+        Queue<User> queue = new LinkedList<>();
+        Map<User, Integer> distance = new HashMap<>();
+        visited.add(user);
+        distance.put(user, 0);
+        queue.add(user);
+        while (!queue.isEmpty()) {
+            User curr = queue.poll();
+            int dist = distance.get(curr);
+            for (User neighbor : adjList.get(curr)) {
+                if (!visited.contains(neighbor)) {
+                    visited.add(neighbor);
+                    distance.put(neighbor, dist + 1);
+                    queue.add(neighbor);
+                }
+            }
+        }
+        List<User> suggestions = new ArrayList<>();
+        for (Map.Entry<User, Integer> entry : distance.entrySet()) {
+            if (entry.getValue() == 2) suggestions.add(entry.getKey());
+        }
+        return suggestions;
+    }
+    public List<User> suggestFriendsDFS(User user) {
+        if (!adjList.containsKey(user)) return new ArrayList<>();
+        Set<User> visited = new HashSet<>();
+        Map<User, Integer> distance = new HashMap<>();
+        dfs(user, user, 0, visited, distance);
+        List<User> suggestions = new ArrayList<>();
+        for (Map.Entry<User, Integer> entry : distance.entrySet()) {
+            if (entry.getValue() == 2) suggestions.add(entry.getKey());
+        }
+        return suggestions;
+    }
+    private void dfs(User current, User start, int dist, Set<User> visited, Map<User, Integer> distance) {
+        visited.add(current);
+        distance.put(current, dist);
+        if (dist < 2) {
+            for (User neighbor : adjList.get(current)) {
+                if (!visited.contains(neighbor)) {
+                    dfs(neighbor, start, dist + 1, visited, distance);
+                }
+            }
+        }
+    }
+    public void displayGraph() {
+        System.out.println("\n=== Social Network Graph ===");
+        for (Map.Entry<User, List<User>> entry : adjList.entrySet()) {
+            System.out.print(entry.getKey() + " -> ");
+            for (User f : entry.getValue()) System.out.print(f.getUsername() + " ");
+            System.out.println();
+        }
+        System.out.println("=============================\n");
+    }
+}    
+public class SocialNetworkSYS {
+	private SocialGraph graph;
+    private static final String FILE_NAME = "socialgraph.ser";
+    public SocialNetworkSYS() {
+        graph = new SocialGraph();
+        loadFromFile();
+    }
+    private void saveToFile() {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(FILE_NAME))) {
+            oos.writeObject(graph);
+            System.out.println("Graph saved.");
+        } catch (IOException e) {
+            System.out.println("Save error: " + e.getMessage());
+        }
+    }
+    private void loadFromFile() {
+        File f = new File(FILE_NAME);
+        if (!f.exists()) return;
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f))) {
+            graph = (SocialGraph) ois.readObject();
+            System.out.println("Graph loaded.");
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Load error: " + e.getMessage());
+        }
+    }
+    private User findUser(String username) {
+        for (User u : graph.getAllUsers())
+            if (u.getUsername().equals(username)) return u;
+        return null;
+    }
+    public void addUser(String username, String name) {
+        User u = new User(username, name);
+        graph.addUser(u);
+        saveToFile();
+        System.out.println("User added: " + username);
+    }
+    public void addFriendship(String u1, String u2) {
+        User a = findUser(u1);
+        User b = findUser(u2);
+        if (a == null || b == null) {
+            System.out.println("User not found.");
+            return;
+        }
+        graph.addFriendship(a, b);
+        saveToFile();
+        System.out.println("Friendship added: " + u1 + " <-> " + u2);
+    }
+    public void suggestFriends(String username, boolean useBFS) {
+        User u = findUser(username);
+        if (u == null) {
+            System.out.println("User not found.");
+            return;
+        }
+        List<User> suggestions = useBFS ? graph.suggestFriendsBFS(u) : graph.suggestFriendsDFS(u);
+        if (suggestions.isEmpty()) {
+            System.out.println("No suggestions for " + username);
+        } else {
+            System.out.println("\nFriend suggestions for " + username + " (distance 2):");
+            for (User sug : suggestions) System.out.println(" - " + sug);
+        }
+    }
+    public void listUsers() {
+        List<User> users = graph.getAllUsers();
+        if (users.isEmpty()) System.out.println("No users.");
+        else {
+            System.out.println("\n=== Users ===");
+            for (User u : users) System.out.println(u);
+            System.out.println("=============\n");
+        }
+    }
+    public void showGraph() {
+        graph.displayGraph();
+    }
+    public void runMenu() {
+        Scanner sc = new Scanner(System.in);
+        while (true) {
+            System.out.println("\n===== Social Network Friend Suggestion =====");
+            System.out.println("1. Add User");
+            System.out.println("2. Add Friendship");
+            System.out.println("3. Suggest Friends (BFS)");
+            System.out.println("4. Suggest Friends (DFS)");
+            System.out.println("5. List All Users");
+            System.out.println("6. Show Full Graph");
+            System.out.println("7. Exit");
+            System.out.print("Choice: ");
+            String ch = sc.nextLine().trim();
+            switch (ch) {
+                case "1":
+                    System.out.print("Username: ");
+                    String un = sc.nextLine().trim();
+                    System.out.print("Full name: ");
+                    String nm = sc.nextLine().trim();
+                    addUser(un, nm);
+                    break;
+                case "2":
+                    System.out.print("First username: ");
+                    String a = sc.nextLine().trim();
+                    System.out.print("Second username: ");
+                    String b = sc.nextLine().trim();
+                    addFriendship(a, b);
+                    break;
+                case "3":
+                    System.out.print("Username: ");
+                    String ub = sc.nextLine().trim();
+                    suggestFriends(ub, true);
+                    break;
+                case "4":
+                    System.out.print("Username: ");
+                    String ud = sc.nextLine().trim();
+                    suggestFriends(ud, false);
+                    break;
+                case "5":
+                    listUsers();
+                    break;
+                case "6":
+                    showGraph();
+                    break;
+                case "7":
+                    System.out.println("Goodbye!");
+                    sc.close();
+                    return;
+                default:
+                    System.out.println("Invalid choice.");
+            }
+        }
+    }
+	public static void main(String[] args) {
+		new SocialNetworkSYS().runMenu();
+	}
+}
